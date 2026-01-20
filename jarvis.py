@@ -2,7 +2,6 @@ import ollama
 import sys
 from datetime import datetime
 
-# Try to import pyttsx3, but continue without it if not available
 try:
     import pyttsx3
     TTS_AVAILABLE = True
@@ -13,7 +12,6 @@ except ImportError as e:
     print(f"  {sys.executable} -m pip install pyttsx3")
     print()
 
-# Try to import speech recognition
 try:
     import speech_recognition as sr
     STT_AVAILABLE = True
@@ -53,7 +51,6 @@ class TTSEngine:
         """Speak text in a separate thread to avoid blocking"""
         def _speak():
             try:
-                # Create a new engine instance for each speech call
                 engine = pyttsx3.init()
                 engine.setProperty('rate', self.rate)
                 engine.setProperty('volume', self.volume)
@@ -70,7 +67,6 @@ class TTSEngine:
     def speak_blocking(self, text):
         """Speak text and wait for completion"""
         try:
-            # Create a new engine instance
             engine = pyttsx3.init()
             engine.setProperty('rate', self.rate)
             engine.setProperty('volume', self.volume)
@@ -81,12 +77,10 @@ class TTSEngine:
             print_error(f"TTS error: {str(e)}")
 
 def main():
-    # Configuration
-    model = "llama2-uncensored:7b"  # Change this to your preferred model
+    model = "llama2-uncensored:7b" 
     conversation_history = []
     tts_enabled = True
     
-    # Initialize TTS engine
     tts = None
     if TTS_AVAILABLE:
         try:
@@ -100,13 +94,11 @@ def main():
         print_info("TTS not available. Install with: pip install pyttsx3")
         tts_enabled = False
     
-    # Add system message to set context
     conversation_history.append({
         'role': 'system',
-        'content': 'You are Jarvis, a helpful AI assistant. You are speaking with your user, whom you address as "Sir".'
+        'content': 'You are Jarvis, a helpful AI assistant. You are speaking with your user, whom you address as "Sir". Please share your thoughts on any topic you find interesting however stay on track and answer the users questions directly.'
     })
     
-    # Print welcome message
     print("\n" + "=" * 60)
     print("Jarvis v0.8")
     print("=" * 60 + "\n")
@@ -114,7 +106,6 @@ def main():
     if tts and tts_enabled:
         tts.speak("Jarvis online. How may I assist you, Sir?")
     
-    # Check if Ollama is running
     try:
         ollama.list()
     except Exception as e:
@@ -122,13 +113,10 @@ def main():
         print_info("Start Ollama with: ollama serve")
         sys.exit(1)
     
-    # Main conversation loop
     while True:
         try:
-            # Get user input
             user_input = input("\033[92mSir:\033[0m ").strip()
             
-            # Handle commands
             if user_input.lower() in ['exit', 'quit']:
                 print_info("Goodbye!")
                 if tts and tts_enabled:
@@ -136,7 +124,7 @@ def main():
                 break
             
             if user_input.lower() == 'clear':
-                conversation_history = [conversation_history[0]]  # Keep system message
+                conversation_history = [conversation_history[0]] 
                 print_info("Conversation history cleared!")
                 if tts and tts_enabled:
                     tts.speak("Conversation history cleared.")
@@ -147,7 +135,7 @@ def main():
                 filename = f"conversation_{timestamp}.txt"
                 with open(filename, 'w') as f:
                     for msg in conversation_history:
-                        if msg['role'] != 'system':  # Don't save system message
+                        if msg['role'] != 'system': 
                             f.write(f"{msg['role'].upper()}: {msg['content']}\n\n")
                 print_info(f"Conversation saved to {filename}")
                 if tts and tts_enabled:
@@ -171,13 +159,11 @@ def main():
             if not user_input:
                 continue
             
-            # Add user message to history
             conversation_history.append({
                 'role': 'user',
                 'content': user_input
             })
             
-            # Get response from Ollama
             print("\033[94mJarvis:\033[0m ", end="", flush=True)
             
             response_content = ""
@@ -192,15 +178,13 @@ def main():
                 print(content, end='', flush=True)
                 response_content += content
             
-            print()  # New line after streaming
+            print()  
             
-            # Add assistant response to history
             conversation_history.append({
-                'role': 'assistant',
+                'role': 'freindly assistant',
                 'content': response_content
             })
             
-            # Speak the response
             if tts and tts_enabled:
                 tts.speak(response_content)
             
@@ -224,8 +208,8 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
     finally:
-        # Keep terminal open
         print("\n" + "=" * 60)
         print("Press Enter to close...")
         print("=" * 60)
+
         input()
