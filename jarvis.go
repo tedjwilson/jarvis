@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -109,6 +110,75 @@ func (o *OllamaClient) TestConnection() error {
 	return nil
 }
 
+type VoiceEngine struct {
+	ttsEnabled bool
+}
+
+func NewVoiceEngine() *VoiceEngine {
+	return &VoiceEngine{
+		ttsEnabled: true,
+	}
+}
+
+func (v *VoiceEngine) Speak(text string) {
+	if !v.ttsEnabled {
+		return
+	}
+
+	go func() {
+		psScript := fmt.Sprintf(`Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = 1; $synth.Volume = 90; $synth.Speak('%s')`, 
+			strings.ReplaceAll(text, "'", "''"))
+		
+		cmd := exec.Command("powershell", "-Command", psScript)
+		cmd.Run()
+	}()
+}
+
+func (v *VoiceEngine) SpeakBlocking(text string) {
+	if !v.ttsEnabled {
+		return
+	}
+
+	psScript := fmt.Sprintf(`Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Rate = 1; $synth.Volume = 90; $synth.Speak('%s')`, 
+		strings.ReplaceAll(text, "'", "''"))
+	
+	cmd := exec.Command("powershell", "-Command", psScript)
+	cmd.Run()
+}
+
+func (v *VoiceEngine) Listen() (string, error) {
+	printInfo("Listening... (speak now)")
+	
+	psScript := `
+Add-Type -AssemblyName System.Speech
+$recognizer = New-Object System.Speech.Recognition.SpeechRecognitionEngine
+$recognizer.SetInputToDefaultAudioDevice()
+$grammar = New-Object System.Speech.Recognition.DictationGrammar
+$recognizer.LoadGrammar($grammar)
+$result = $recognizer.Recognize()
+if ($result -ne $null) {
+    $result.Text
+} else {
+    ""
+}
+$recognizer.Dispose()
+`
+	
+	cmd := exec.Command("powershell", "-Command", psScript)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("speech recognition error: %v", err)
+	}
+
+	text := strings.TrimSpace(string(output))
+	if text == "" {
+		return "", fmt.Errorf("no speech detected")
+	}
+
+	printInfo("Processing speech...")
+	return text, nil
+}
+
 func printSeparator() {
 	fmt.Println("\n" + strings.Repeat("-", 60) + "\n")
 }
@@ -152,6 +222,8 @@ func saveConversation(messages []Message) error {
 func main() {
 	model := "llama2-uncensored:7b"
 	client := NewOllamaClient("http://localhost:11434")
+	voice := NewVoiceEngine()
+	voiceInputMode := false
 
 	conversationHistory := []Message{
 		{
@@ -161,9 +233,9 @@ func main() {
 	}
 
 	fmt.Println("\n" + strings.Repeat("=", 60))
-	fmt.Println("Jarvis v1.0 - Go Edition")
+	fmt.Println("Jarvis v1.0 - Go Edition with Voice")
 	fmt.Println(strings.Repeat("=", 60) + "\n")
-	printInfo("Commands: exit, quit, clear, save")
+	printInfo("Commands: exit, quit, clear, save, mute, unmute, voice, text")
 	fmt.Println()
 
 	if err := client.TestConnection(); err != nil {
@@ -173,17 +245,46 @@ func main() {
 		os.Exit(1)
 	}
 
+	voice.Speak("Jarvis online. How may I assist you, Sir?")
+
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		fmt.Printf("%sSir:%s ", ColorGreen, ColorReset)
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			printError(fmt.Sprintf("Error reading input: %v", err))
-			continue
-		}
+		var userInput string
 
-		userInput := strings.TrimSpace(input)
+		if voiceInputMode {
+			printInfo("Press Enter to speak (or type 'text' to switch to text input)")
+			input, _ := reader.ReadString('\n')
+			input = strings.TrimSpace(input)
+
+			if strings.ToLower(input) == "text" {
+				voiceInputMode = false
+				printInfo("Switched to text input mode")
+				continue
+			} else if strings.ToLower(input) == "exit" || strings.ToLower(input) == "quit" {
+				printInfo("Goodbye!")
+				voice.SpeakBlocking("Goodbye, Sir.")
+				return
+			} else if input != "" {
+				userInput = input
+			} else {
+				text, err := voice.Listen()
+				if err != nil {
+					printError(err.Error())
+					continue
+				}
+				userInput = text
+				printUser(userInput)
+			}
+		} else {
+			fmt.Printf("%sSir:%s ", ColorGreen, ColorReset)
+			input, err := reader.ReadString('\n')
+			if err != nil {
+				printError(fmt.Sprintf("Error reading input: %v", err))
+				continue
+			}
+			userInput = strings.TrimSpace(input)
+		}
 
 		if userInput == "" {
 			continue
@@ -192,17 +293,43 @@ func main() {
 		switch strings.ToLower(userInput) {
 		case "exit", "quit":
 			printInfo("Goodbye!")
+			voice.SpeakBlocking("Goodbye, Sir.")
 			return
 
 		case "clear":
 			conversationHistory = []Message{conversationHistory[0]}
 			printInfo("Conversation history cleared!")
+			voice.Speak("Conversation history cleared.")
 			continue
 
 		case "save":
 			if err := saveConversation(conversationHistory); err != nil {
 				printError(fmt.Sprintf("Could not save conversation: %v", err))
+			} else {
+				voice.Speak("Conversation saved.")
 			}
+			continue
+
+		case "mute":
+			voice.ttsEnabled = false
+			printInfo("Voice output muted.")
+			continue
+
+		case "unmute":
+			voice.ttsEnabled = true
+			printInfo("Voice output enabled.")
+			voice.Speak("Voice output enabled.")
+			continue
+
+		case "voice":
+			voiceInputMode = true
+			printInfo("Voice input mode enabled. Press Enter to speak.")
+			voice.Speak("Voice input mode enabled.")
+			continue
+
+		case "text":
+			voiceInputMode = false
+			printInfo("Text input mode enabled.")
 			continue
 		}
 
@@ -224,6 +351,8 @@ func main() {
 			Role:    "assistant",
 			Content: response,
 		})
+
+		voice.Speak(response)
 
 		printSeparator()
 	}
