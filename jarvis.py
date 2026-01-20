@@ -1,6 +1,15 @@
-import ollama
 import sys
 from datetime import datetime
+import json
+
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+    print("Error: requests not installed")
+    print(f"Run: {sys.executable} -m pip install requests")
+    sys.exit(1)
 
 try:
     import pyttsx3
@@ -8,8 +17,7 @@ try:
 except ImportError as e:
     TTS_AVAILABLE = False
     print(f"Warning: pyttsx3 not installed. Error: {e}")
-    print(f"Run this command to install for your current Python:")
-    print(f"  {sys.executable} -m pip install pyttsx3")
+    print(f"Run: {sys.executable} -m pip install pyttsx3")
     print()
 
 try:
@@ -18,8 +26,7 @@ try:
 except ImportError as e:
     STT_AVAILABLE = False
     print(f"Warning: speech_recognition not installed. Error: {e}")
-    print(f"Run this command to install for your current Python:")
-    print(f"  {sys.executable} -m pip install SpeechRecognition PyAudio")
+    print(f"Run: {sys.executable} -m pip install SpeechRecognition PyAudio")
     print()
 
 import threading
@@ -105,11 +112,50 @@ class STTEngine:
             print_error(f"Microphone error: {str(e)}")
             return None
 
+class OllamaAPI:
+    def __init__(self, base_url="http://localhost:11434"):
+        self.base_url = base_url
+    
+    def chat(self, model, messages, stream=True):
+        url = f"{self.base_url}/api/chat"
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": stream
+        }
+        
+        try:
+            response = requests.post(url, json=payload, stream=stream)
+            response.raise_for_status()
+            
+            if stream:
+                for line in response.iter_lines():
+                    if line:
+                        chunk = json.loads(line)
+                        yield chunk
+            else:
+                return response.json()
+        except requests.exceptions.ConnectionError:
+            raise Exception("Cannot connect to Ollama. Make sure Ollama is running.")
+        except Exception as e:
+            raise Exception(f"Ollama API error: {str(e)}")
+    
+    def list_models(self):
+        url = f"{self.base_url}/api/tags"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.ConnectionError:
+            raise Exception("Cannot connect to Ollama. Make sure Ollama is running.")
+
 def main():
     model = "llama2-uncensored:7b" 
     conversation_history = []
     tts_enabled = True
     voice_input_mode = False
+    
+    ollama = OllamaAPI()
     
     tts = None
     if TTS_AVAILABLE:
@@ -142,7 +188,7 @@ def main():
     })
     
     print("\n" + "=" * 60)
-    print("Jarvis v0.9 - Voice Input Enabled")
+    print("Jarvis v1.0 - Python 3.13 Compatible")
     print("=" * 60 + "\n")
     print_info("Commands: exit, quit, clear, save, mute, unmute, voice, text")
     print()
@@ -151,9 +197,9 @@ def main():
         tts.speak("Jarvis online. How may I assist you, Sir?")
     
     try:
-        ollama.list()
+        ollama.list_models()
     except Exception as e:
-        print_error("Cannot connect to Ollama. Make sure Ollama is running.")
+        print_error(str(e))
         print_info("Start Ollama with: ollama serve")
         sys.exit(1)
     
@@ -254,9 +300,10 @@ def main():
             )
             
             for chunk in stream:
-                content = chunk['message']['content']
-                print(content, end='', flush=True)
-                response_content += content
+                if 'message' in chunk and 'content' in chunk['message']:
+                    content = chunk['message']['content']
+                    print(content, end='', flush=True)
+                    response_content += content
             
             print()  
             
