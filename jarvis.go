@@ -220,7 +220,7 @@ func saveConversation(messages []Message) error {
 }
 
 func main() {
-	model := "llama2-uncensored:7b"
+	model := "gpt-oss:120b-cloud"
 	client := NewOllamaClient("http://localhost:11434")
 	voice := NewVoiceEngine()
 	voiceInputMode := false
@@ -234,6 +234,7 @@ func main() {
 
 	fmt.Println("\n" + strings.Repeat("=", 60))
 	fmt.Println("Jarvis v1.0 - Go Edition with Voice")
+	fmt.Printf("Model: %s\n", model)
 	fmt.Println(strings.Repeat("=", 60) + "\n")
 	printInfo("Commands: exit, quit, clear, save, mute, unmute, voice, text")
 	fmt.Println()
@@ -257,103 +258,4 @@ func main() {
 			input, _ := reader.ReadString('\n')
 			input = strings.TrimSpace(input)
 
-			if strings.ToLower(input) == "text" {
-				voiceInputMode = false
-				printInfo("Switched to text input mode")
-				continue
-			} else if strings.ToLower(input) == "exit" || strings.ToLower(input) == "quit" {
-				printInfo("Goodbye!")
-				voice.SpeakBlocking("Goodbye, Sir.")
-				return
-			} else if input != "" {
-				userInput = input
-			} else {
-				text, err := voice.Listen()
-				if err != nil {
-					printError(err.Error())
-					continue
-				}
-				userInput = text
-				printUser(userInput)
-			}
-		} else {
-			fmt.Printf("%sSir:%s ", ColorGreen, ColorReset)
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				printError(fmt.Sprintf("Error reading input: %v", err))
-				continue
-			}
-			userInput = strings.TrimSpace(input)
-		}
-
-		if userInput == "" {
-			continue
-		}
-
-		switch strings.ToLower(userInput) {
-		case "exit", "quit":
-			printInfo("Goodbye!")
-			voice.SpeakBlocking("Goodbye, Sir.")
-			return
-
-		case "clear":
-			conversationHistory = []Message{conversationHistory[0]}
-			printInfo("Conversation history cleared!")
-			voice.Speak("Conversation history cleared.")
-			continue
-
-		case "save":
-			if err := saveConversation(conversationHistory); err != nil {
-				printError(fmt.Sprintf("Could not save conversation: %v", err))
-			} else {
-				voice.Speak("Conversation saved.")
-			}
-			continue
-
-		case "mute":
-			voice.ttsEnabled = false
-			printInfo("Voice output muted.")
-			continue
-
-		case "unmute":
-			voice.ttsEnabled = true
-			printInfo("Voice output enabled.")
-			voice.Speak("Voice output enabled.")
-			continue
-
-		case "voice":
-			voiceInputMode = true
-			printInfo("Voice input mode enabled. Press Enter to speak.")
-			voice.Speak("Voice input mode enabled.")
-			continue
-
-		case "text":
-			voiceInputMode = false
-			printInfo("Text input mode enabled.")
-			continue
-		}
-
-		conversationHistory = append(conversationHistory, Message{
-			Role:    "user",
-			Content: userInput,
-		})
-
-		printAssistant()
-
-		response, err := client.Chat(model, conversationHistory)
-		if err != nil {
-			printError(err.Error())
-			conversationHistory = conversationHistory[:len(conversationHistory)-1]
-			continue
-		}
-
-		conversationHistory = append(conversationHistory, Message{
-			Role:    "assistant",
-			Content: response,
-		})
-
-		voice.Speak(response)
-
-		printSeparator()
-	}
-}
+			if stri
